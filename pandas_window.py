@@ -96,58 +96,55 @@ def cluster(data, windowsize, pattern):
 
 
 
-'''
-def toall_seperately(data, source_cols, dest_col_titles, window, fn):
-            
-            
-            
-            data.loc[index+1, "dest_col_titles1"] = fn(data, heads[0], index+1, windows[0])
-            data.loc[index+1, "dest_col_titles2"] = fn(data, heads[1], index+1, windows[0])
-            data.loc[index+1, "dest_col_titles3"] = fn(data, heads[2], index+1, windows[0])
-            data.loc[index+1, "dest_col_titles4"] = fn(data, heads[3], index+1, windows[0])
+
+def apply_seperately(data, source_cols: list[str], dest_col_prefix: str, start_index: int, end_index: int, fn):         
+    
+    for i in range(0,4): 
+
+        data.loc[start_index, f"{dest_col_prefix}{i}"] = fn(data, source_cols[i], start_index, end_index)
 
 
-'''
+def norm(data) :
+
+    heads = data.columns[4:8]
+    newcols = [f"Norm{i}" for i in range(0,4)] 
+    data[newcols] = data[heads].apply(lambda row: row/max(row) if max(row) != 0 else [0,0,0,0], axis =1)
+
 
 def visit_window(data, windows, fn): 
 
-    initpos = 0
-
-    j =  ["" for _ in range(len(data["POSITION"]))]
-    data["COUNT1"] = j
-    data["COUNT2"] = j
-    data["COUNT3"] = j
-    data["COUNT4"] = j
-
     heads = data.columns[4:8]
-
-    
+    aggfn = apply_seperately
     if "count0" in fn.lower(): 
         k = lambda dat, col, strt, nd : (dat[col][strt:nd].astype(float) == 0).sum()
+        prefix = "count0_"
     elif "prod" in fn.lower(): 
+        prefix = "prod_"
         k = lambda dat, col, strt, nd : dat[col][strt:nd].astype(float).prod()
     elif "sum" in fn.lower(): 
+        prefix = "sum_ "
         k = lambda dat, col, strt, nd : dat[col][strt:nd].astype(float).sum()
+    elif "prod_of_norm":
+        prefix = "norm_prod_" 
+        norm(data)
+        heads = [f"Norm{i}" for i in range(0,4)]
+        k = lambda dat, col, strt, nd : dat[col][strt:nd].astype(float).prod()
+    else:
+        raise SyntaxError("No Aggregating Function Specified")
 
 
-    for i in range(1,5): 
-        data.loc[0, f"COUNT{i}"] = k(data, heads[i-1], 0, windows[0])
+    
+
+    aggfn(data, heads, prefix, 0, windows[0]+1, k)
 
 
-        index = 0
+    index = 0
     while windows != []:
         index = windows.pop(0)
         if windows != []:
-            data.loc[index+1, "COUNT1"] = k(data, heads[0], index+1, windows[0])
-            data.loc[index+1, "COUNT2"] = k(data, heads[1], index+1, windows[0])
-            data.loc[index+1, "COUNT3"] = k(data, heads[2], index+1, windows[0])
-            data.loc[index+1, "COUNT4"] = k(data, heads[3], index+1, windows[0])
+            aggfn(data, heads, prefix, index+1, windows[0]+1, k)
         else:
-            pass
-            data.loc[index+1, "COUNT1"] = k(data, heads[0], index+1, -1)
-            data.loc[index+1, "COUNT2"] = k(data, heads[1], index+1, -1)
-            data.loc[index+1, "COUNT3"] = k(data, heads[2], index+1, -1)
-            data.loc[index+1, "COUNT4"] = k(data, heads[3], index+1, -1)
+            aggfn(data, heads, prefix, index+1, -1, k)
 
     return data
 
@@ -188,7 +185,8 @@ if __name__ == "__main__":
     parser.add_argument('--partitionsize', dest='partsize', action='store', type=int,
                         default=1000000, help='windowpartition when calculating in non-sliding style default=1000000')
     
-    parser.add_argument("--function", type=str, dest="func", choices=["count0", "prod", "sum"], default="count0", help="option selection for non-sliding window choose from: count0 prod sum")
+    parser.add_argument("--function", type=str, dest="func", choices=["count0", "prod", "sum", "p_of_n"], 
+                        default="count0", help="option selection for non-sliding window choose from: count0 prod sum")
 
     parser.add_argument('--slidesize', dest='slidesize', action='store', type=int,
                     default=1000000, help='windowsizeslide when calculating sliding style defalut=1000000')
